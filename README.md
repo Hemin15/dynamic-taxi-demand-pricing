@@ -137,18 +137,8 @@ streamlit run app/app.py
 
 ---
 
-## 📸 Dashboard Preview
 
-*Add screenshots here after deployment*
-
-* Home dashboard
-* Demand prediction panel
-* Pricing recommendation panel
-* Revenue analytics charts
-
----
-
-## 💼 Resume Value
+## 💼 Industry Value
 
 This project demonstrates:
 
@@ -179,6 +169,4 @@ Passionate about AI, Data Science, and Intelligent Systems
 
 ---
 
-## ⭐ If you found this project interesting
 
-Give it a star on GitHub and connect with me.
