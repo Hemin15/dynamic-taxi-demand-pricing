@@ -1,7 +1,9 @@
 import sys
 import os
 import json
+import warnings
 from pathlib import Path
+from types import SimpleNamespace
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
@@ -40,21 +42,54 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+st.markdown(
+    """
+    <style>
+        .block-container {
+            padding-top: 1.2rem;
+            padding-bottom: 2rem;
+        }
+        .hero-card {
+            background: linear-gradient(135deg, rgba(25,25,35,0.98), rgba(30,41,59,0.96));
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 18px;
+            padding: 1.25rem 1.5rem;
+            margin-bottom: 1rem;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.12);
+        }
+        .hero-title {
+            font-size: 2.0rem;
+            font-weight: 800;
+            margin-bottom: 0.15rem;
+            color: white;
+        }
+        .hero-subtitle {
+            font-size: 0.98rem;
+            color: rgba(255,255,255,0.78);
+        }
+        .small-note {
+            font-size: 0.88rem;
+            color: rgba(255,255,255,0.72);
+        }
+        div[data-testid="metric-container"] {
+            background: rgba(255,255,255,0.03);
+            border: 1px solid rgba(148,163,184,0.18);
+            padding: 10px 12px;
+            border-radius: 14px;
+            box-shadow: 0 6px 18px rgba(0,0,0,0.05);
+        }
+        section[data-testid="stSidebar"] {
+            border-right: 1px solid rgba(148,163,184,0.15);
+        }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
 
 # -------------------------------------------------------------------
 # Small utilities
 # -------------------------------------------------------------------
-def _json_default(obj):
-    if isinstance(obj, pd.Timestamp):
-        return obj.isoformat()
-    if hasattr(obj, "item"):
-        try:
-            return obj.item()
-        except Exception:
-            pass
-    return str(obj)
-
-
 def _safe_float(value, default=0.0):
     try:
         if value is None or (isinstance(value, float) and np.isnan(value)):
@@ -78,6 +113,24 @@ def _file_text(path: Path):
         return path.read_text(encoding="utf-8")
     except Exception:
         return None
+
+
+def _json_default(obj):
+    if isinstance(obj, pd.Timestamp):
+        return obj.isoformat()
+    if hasattr(obj, "item"):
+        try:
+            return obj.item()
+        except Exception:
+            pass
+    return str(obj)
+
+
+def save_json(obj, path):
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8") as f:
+        json.dump(obj, f, indent=4, default=_json_default)
 
 
 # -------------------------------------------------------------------
@@ -117,23 +170,70 @@ def load_optional_json(path_str: str):
 
 
 # -------------------------------------------------------------------
-# Prediction helpers
+# Demo fallback data
 # -------------------------------------------------------------------
-def predict_no_warnings(model, row_df: pd.DataFrame) -> float:
-    """
-    Predict using a NumPy array to avoid feature-name warnings from sklearn/lightgbm.
-    """
-    try:
-        return float(model.predict(row_df.to_numpy(dtype=float))[0])
-    except Exception:
-        return float(model.predict(row_df)[0])
+@st.cache_data(show_spinner=False)
+def build_demo_data(n_rows: int = 600):
+    rng = np.random.default_rng(42)
+    zones = [
+        "40.64_-73.78",
+        "40.71_-73.98",
+        "40.73_-73.98",
+        "40.76_-73.97",
+        "40.77_-73.93",
+        "40.79_-73.95",
+        "40.81_-73.97",
+        "40.83_-73.95",
+    ]
+
+    rows = []
+    for i in range(n_rows):
+        hour = int(rng.integers(0, 24))
+        dow = int(rng.integers(0, 7))
+        month = int(rng.integers(1, 13))
+        zone = zones[int(rng.integers(0, len(zones)))]
+        base = float(rng.lognormal(mean=2.2, sigma=0.7))
+        demand = max(1.0, base * (1.0 + 0.35 * (hour in [7, 8, 9, 16, 17, 18, 19])))
+
+        row = {
+            "pickup_date": pd.Timestamp("2015-01-01") + pd.Timedelta(days=int(rng.integers(0, 31))),
+            "hour": hour,
+            "day_of_week": dow,
+            "month": month,
+            "week_of_year": int(rng.integers(1, 53)),
+            "is_weekend": int(dow >= 5),
+            "is_peak_hour": int(hour in [7, 8, 9, 16, 17, 18, 19]),
+            "hour_sin": float(np.sin(2 * np.pi * hour / 24)),
+            "hour_cos": float(np.cos(2 * np.pi * hour / 24)),
+            "dow_sin": float(np.sin(2 * np.pi * dow / 7)),
+            "dow_cos": float(np.cos(2 * np.pi * dow / 7)),
+            "pickup_lat_bin": float(rng.uniform(40.60, 40.85)),
+            "pickup_lon_bin": float(rng.uniform(-74.05, -73.75)),
+            "zone_trip_volume": float(rng.integers(20, 500)),
+            "date_ordinal": float(pd.Timestamp("2015-01-01").toordinal() + int(rng.integers(0, 31))),
+            "lag_1": float(max(1.0, demand * rng.uniform(0.85, 1.10))),
+            "lag_2": float(max(1.0, demand * rng.uniform(0.80, 1.05))),
+            "lag_24": float(max(1.0, demand * rng.uniform(0.75, 1.20))),
+            "rolling_mean_3": float(max(1.0, demand * rng.uniform(0.90, 1.08))),
+            "rolling_mean_24": float(max(1.0, demand * rng.uniform(0.85, 1.15))),
+            "rolling_std_24": float(rng.uniform(1.0, 18.0)),
+            "expanding_mean_zone": float(max(1.0, demand * rng.uniform(0.90, 1.12))),
+            "pickup_zone": zone,
+            "demand": float(demand),
+            "avg_fare_amount": float(rng.uniform(8, 45)),
+            "avg_trip_distance": float(rng.uniform(1, 12)),
+            "avg_duration_min": float(rng.uniform(4, 45)),
+            "avg_speed_kph": float(rng.uniform(8, 45)),
+        }
+        rows.append(row)
+
+    demo_df = pd.DataFrame(rows)
+    return prepare_model_data(demo_df)
 
 
 def build_context_row(prepared_df: pd.DataFrame, zone: str, hour: int) -> pd.Series:
     """
     Build a realistic context row for a chosen zone and hour.
-    The row is populated with robust median-based fallbacks so the dashboard
-    works even when some features are sparse in a local slice.
     """
     subset = prepared_df[(prepared_df["pickup_zone"] == zone) & (prepared_df["hour"] == hour)].copy()
 
@@ -145,6 +245,7 @@ def build_context_row(prepared_df: pd.DataFrame, zone: str, hour: int) -> pd.Ser
         subset = prepared_df.copy()
 
     row = {}
+
     for col in ALL_FEATURES:
         if col == "hour":
             row[col] = hour
@@ -177,6 +278,34 @@ def build_context_row(prepared_df: pd.DataFrame, zone: str, hour: int) -> pd.Ser
     return pd.Series(row)
 
 
+def predict_no_warnings(model, row_df: pd.DataFrame) -> float:
+    """
+    Predict while suppressing sklearn/lightgbm feature-name warnings.
+    """
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        try:
+            return float(model.predict(row_df)[0])
+        except Exception:
+            return float(model.predict(row_df.to_numpy(dtype=float))[0])
+
+
+def safe_demo_predict(prepared_df: pd.DataFrame, context_row: pd.Series, model=None) -> float:
+    """
+    Use the real model when available; otherwise use a stable heuristic fallback.
+    """
+    if model is not None:
+        row_df = pd.DataFrame([context_row[ALL_FEATURES].to_dict()])
+        return predict_no_warnings(model, row_df)
+
+    base = float(prepared_df["demand"].median()) if "demand" in prepared_df.columns else 25.0
+    hour = int(context_row["hour"])
+    peak_boost = 1.25 if hour in [7, 8, 9, 16, 17, 18, 19] else 1.0
+    weekend_adj = 0.92 if int(context_row.get("is_weekend", 0)) == 1 else 1.0
+    zone_adj = 1.0 + min(float(context_row.get("zone_trip_volume", 0)) / 1200.0, 0.35)
+    return max(1.0, base * peak_boost * weekend_adj * zone_adj)
+
+
 # -------------------------------------------------------------------
 # Plotting
 # -------------------------------------------------------------------
@@ -205,8 +334,7 @@ def plot_sensitivity_curve(sensitivity_df: pd.DataFrame):
 def plot_comparison_bars(model_metrics: dict):
     if not model_metrics or not model_metrics.get("comparison"):
         return
-    comp = pd.DataFrame(model_metrics["comparison"])  # full comparison table
-    comp = comp.sort_values("val_mae")
+    comp = pd.DataFrame(model_metrics["comparison"]).sort_values("val_mae")
 
     fig, ax = plt.subplots(figsize=(10, 5))
     ax.bar(comp["model_name"], comp["val_mae"])
@@ -258,37 +386,82 @@ def make_kpi_cards(predicted_demand, ref_price, pricing_result):
     c4.metric("Revenue uplift", f"{_fmt_number(pricing_result.uplift_percent)}%")
 
 
-def human_summary(final_report, model_metrics, pricing_result):
-    if not final_report:
-        return "No final report found yet."
-    best_model = final_report.get("project", {}).get("model_type", "unknown")
-    avg_uplift = final_report.get("batch_summary", {}).get("average_uplift_percent", None)
-    demo_uplift = final_report.get("demo_case", {}).get("uplift_percent", None)
-    nn_used = bool(model_metrics.get("has_neural_network_branch", False)) if model_metrics else False
-    return (
-        f"Best model: {best_model}. "
-        f"Demo uplift: {demo_uplift:.2f}% if available. "
-        f"Batch uplift: {avg_uplift:.2f}% if available. "
-        f"Neural network branch tested: {'yes' if nn_used else 'no'}."
-    )
+def build_fallback_final_report(best_model_name: str, pricing_result, ref_price, predicted_demand):
+    return {
+        "project": {
+            "name": "dynamic taxi demand forecasting and pricing optimization",
+            "model_type": best_model_name,
+            "notes": "hybrid ai system combining machine learning demand prediction with rule-based pricing optimization",
+        },
+        "demo_case": {
+            "pickup_date": "demo",
+            "hour": int(st.session_state.get("hour", 11)),
+            "pickup_zone": str(st.session_state.get("zone", "demo-zone")),
+            "actual_demand": None,
+            "predicted_demand": float(predicted_demand),
+            "reference_price": float(ref_price),
+            "static_price": float(pricing_result.static_price),
+            "static_revenue": float(pricing_result.static_revenue),
+            "optimal_price": float(pricing_result.optimal_price),
+            "optimal_demand": float(pricing_result.expected_demand),
+            "optimal_revenue": float(pricing_result.expected_revenue),
+            "uplift_percent": float(pricing_result.uplift_percent),
+        },
+        "pricing_sensitivity": [],
+        "batch_summary": {
+            "sample_size": 0,
+            "average_predicted_demand": float(predicted_demand),
+            "average_static_revenue": float(pricing_result.static_revenue),
+            "average_optimal_revenue": float(pricing_result.expected_revenue),
+            "average_uplift_percent": float(pricing_result.uplift_percent),
+        },
+        "top_5_uplift_cases": [],
+        "model_summary": {},
+    }
 
 
 # -------------------------------------------------------------------
 # App
 # -------------------------------------------------------------------
-st.title("🚖 AI-driven Dynamic Pricing Optimization System")
-st.caption("Demand forecasting + pricing intelligence + neural-network benchmark + walk-forward evaluation")
+st.markdown(
+    """
+    <div class="hero-card">
+        <div class="hero-title">🚖 AI-driven Dynamic Pricing Optimization System</div>
+        <div class="hero-subtitle">
+            Demand forecasting + pricing intelligence + neural-network benchmark + walk-forward evaluation
+        </div>
+        <div class="small-note">
+            Built to stay usable both locally and on Streamlit Cloud, even when training artifacts are not deployed.
+        </div>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
 
-if not DATA_PATH.exists() or not MODEL_PATH.exists():
-    st.error("Required files are missing. Run preprocessing, model training, and src/main.py first.")
-    st.stop()
+data_exists = DATA_PATH.exists()
+model_exists = MODEL_PATH.exists()
 
-# Load artifacts
+if not data_exists or not model_exists:
+    st.warning(
+        "Running in demo mode because the full data/model bundle is not available in this deployment. "
+        "The dashboard remains interactive using a synthetic fallback dataset."
+    )
+
 with st.spinner("Loading data and artifacts..."):
-    df = load_data()
-    prepared_df = prepare_model_data(df)
-    prepared_df = prepared_df.dropna(subset=ALL_FEATURES + ["demand"]).copy()
-    model = load_model()
+    if data_exists:
+        try:
+            df = load_data()
+            prepared_df = prepare_model_data(df)
+            prepared_df = prepared_df.dropna(subset=ALL_FEATURES + ["demand"]).copy()
+        except Exception:
+            prepared_df = build_demo_data()
+    else:
+        prepared_df = build_demo_data()
+
+    try:
+        model = load_model() if model_exists else None
+    except Exception:
+        model = None
 
     model_metrics = load_optional_json(str(ARTIFACTS_DIR / "model_metrics.json"))
     cv_summary_df = load_optional_csv(str(ARTIFACTS_DIR / "cross_validation_summary.csv"))
@@ -301,6 +474,8 @@ with st.spinner("Loading data and artifacts..."):
     run_summary_text = _file_text(FINAL_DIR / "run_summary.txt")
 
 zones = sorted(prepared_df["pickup_zone"].dropna().astype(str).unique().tolist())
+if not zones:
+    zones = ["demo-zone"]
 
 # Sidebar
 with st.sidebar:
@@ -309,15 +484,17 @@ with st.sidebar:
     hour = st.slider("Hour of day", 0, 23, 11)
     elasticity = st.slider("Elasticity assumption", 0.05, 1.00, 0.35, 0.05)
     st.caption("Higher elasticity means demand falls faster when price rises.")
-
     st.divider()
-    st.subheader("Quick links")
-    st.write("Live pricing demo, model comparison, cross-validation, feature importance, and final outputs are below.")
+    st.subheader("Project status")
+    st.write("Live pricing demo, model comparison, cross-validation, feature importance, and final outputs are included below.")
+
+st.session_state["zone"] = zone
+st.session_state["hour"] = hour
 
 # Core scenario
 context_row = build_context_row(prepared_df, zone, hour)
 context_row_df = pd.DataFrame([context_row[ALL_FEATURES].to_dict()])
-predicted_demand = predict_no_warnings(model, context_row_df)
+predicted_demand = safe_demo_predict(prepared_df, context_row, model)
 
 pricing_engine = DynamicPricingEngine(
     min_price=5.0,
@@ -335,6 +512,14 @@ pricing_result, revenue_curve = optimize_for_row(
     price_step=1.0,
     elasticity=elasticity,
 )
+
+if final_report is None:
+    final_report = build_fallback_final_report(
+        best_model_name=(model_metrics or {}).get("best_model", "demo-mode"),
+        pricing_result=pricing_result,
+        ref_price=ref_price,
+        predicted_demand=predicted_demand,
+    )
 
 # Hero KPI section
 make_kpi_cards(predicted_demand, ref_price, pricing_result)
@@ -354,7 +539,7 @@ with col_right:
 st.subheader("Revenue curve data")
 st.dataframe(revenue_curve.head(15), use_container_width=True, hide_index=True)
 
-# Executive summary / methodology
+# Executive summary
 st.divider()
 st.subheader("Project overview")
 summary_cols = st.columns(3)
@@ -366,30 +551,35 @@ left_summary, right_summary = st.columns([1.2, 0.8])
 with left_summary:
     st.write(
         "This dashboard combines a demand forecasting model with a revenue-maximizing pricing engine. "
-        "The project evaluates multiple classical regressors, gradient boosting models, and a neural-network branch, "
-        "then surfaces the best-performing model in a real scenario."
+        "The pipeline evaluates multiple classical regressors, gradient boosting models, and a neural-network benchmark, "
+        "then surfaces the best-performing model for pricing decisions."
     )
-    if final_report:
-        st.info(
-            f"Best model: {final_report.get('project', {}).get('model_type', 'unknown')} | "
-            f"Demo uplift: {final_report.get('demo_case', {}).get('uplift_percent', 0):.2f}% | "
-            f"Batch uplift: {final_report.get('batch_summary', {}).get('average_uplift_percent', 0):.2f}%"
-        )
+    st.info(
+        f"Best model: {final_report.get('project', {}).get('model_type', 'unknown')} | "
+        f"Demo uplift: {final_report.get('demo_case', {}).get('uplift_percent', 0):.2f}% | "
+        f"Batch uplift: {final_report.get('batch_summary', {}).get('average_uplift_percent', 0):.2f}%"
+    )
 with right_summary:
     st.write("Model selection snapshot")
     if model_metrics and model_metrics.get("best_model"):
         st.success(f"Selected model: {model_metrics['best_model']}")
         st.caption("Tree boosting won on validation; the neural network was tested as a benchmark.")
     else:
-        st.info("Model metadata not found.")
+        st.info("Demo mode or model metadata not found.")
 
 # Context explorer
 st.divider()
 st.subheader("Top demand context")
-show_cols = ["pickup_date", "hour", "day_of_week", "pickup_zone", "demand", "avg_fare_amount", "avg_trip_distance", "avg_duration_min", "avg_speed_kph"]
+show_cols = [
+    "pickup_date", "hour", "day_of_week", "pickup_zone", "demand",
+    "avg_fare_amount", "avg_trip_distance", "avg_duration_min", "avg_speed_kph"
+]
 available_cols = [c for c in show_cols if c in prepared_df.columns]
 zone_history = prepared_df[prepared_df["pickup_zone"] == zone].sort_values(["hour", "pickup_date"])
-st.dataframe(zone_history[available_cols].head(10), use_container_width=True, hide_index=True)
+if available_cols:
+    st.dataframe(zone_history[available_cols].head(10), use_container_width=True, hide_index=True)
+else:
+    st.info("Context table not available in this deployment.")
 
 # Model quality
 st.divider()
@@ -424,7 +614,7 @@ if model_metrics:
     with quality_right:
         plot_model_quality(model_metrics)
 else:
-    st.info("Model metrics not available.")
+    st.info("Model metrics not available in this deployment.")
 
 with st.expander("Model comparison", expanded=False):
     if model_metrics and model_metrics.get("comparison"):
