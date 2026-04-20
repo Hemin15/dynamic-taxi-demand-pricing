@@ -278,16 +278,13 @@ def build_context_row(prepared_df: pd.DataFrame, zone: str, hour: int) -> pd.Ser
     return pd.Series(row)
 
 
-def predict_no_warnings(model, row_df: pd.DataFrame) -> float:
-    """
-    Predict while suppressing sklearn/lightgbm feature-name warnings.
-    """
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        try:
-            return float(model.predict(row_df)[0])
-        except Exception:
-            return float(model.predict(row_df.to_numpy(dtype=float))[0])
+def predict_no_warnings(model, row_df):
+    try:
+        # keep dataframe columns intact
+        return float(model.predict(row_df)[0])
+    except Exception as e:
+        st.error(f"Prediction error: {e}")
+        return 0.0
 
 
 def safe_demo_predict(prepared_df: pd.DataFrame, context_row: pd.Series, model=None) -> float:
