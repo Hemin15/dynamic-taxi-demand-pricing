@@ -1,0 +1,25 @@
+{
+    "feature_columns": [
+        "hour",
+        "day_of_week",
+        "month",
+        "week_of_year",
+        "is_weekend",
+        "is_peak_hour",
+        "hour_sin",
+        "hour_cos",
+        "dow_sin",
+        "dow_cos",
+        "pickup_lat_bin",
+        "pickup_lon_bin",
+        "zone_trip_volume",
+        "date_ordinal",
+        "lag_1",
+        "lag_2",
+        "lag_24",
+        "rolling_mean_3",
+        "rolling_mean_24",
+        "rolling_std_24",
+        "expanding_mean_zone"
+    ]
+}

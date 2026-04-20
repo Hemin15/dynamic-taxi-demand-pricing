@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+
+models/*.pkl
+
+outputs/data/
+outputs/predictions/
+outputs/plots/
+outputs/pricing/
+outputs/final/
+
+data/
+catboost_info/
