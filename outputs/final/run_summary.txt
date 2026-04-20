@@ -1,0 +1,17 @@
+RUN SUMMARY
+==================================================
+Best model: lightgbm
+Demo uplift: 19.50%
+Average uplift: 22.23%
+Average static revenue: 1034.12
+Average optimal revenue: 1283.58
+
+Top CV models:
+               model_name  cv_train_mae_mean  cv_train_mae_std  cv_val_mae_mean  ...  cv_bias_mean  cv_median_ae_mean  cv_mape_mean  cv_smape_mean
+0             extra_trees           5.377659          0.310322        12.651514  ...      1.240368           2.103497     49.369394      33.927543
+1                lightgbm           8.666374          0.529175        12.988272  ...      0.433319           2.273749     54.070995      37.819864
+2                 xgboost           9.878450          0.645091        13.273705  ...      0.392182           2.323510     58.803949      38.957433
+3  hist_gradient_boosting          11.004885          0.028586        13.537452  ...      0.407614           2.273913     59.015690      39.637155
+4           random_forest           8.790502          0.250650        13.550510  ...      1.072897           2.171086     51.001697      34.823672
+
+[5 rows x 14 columns]

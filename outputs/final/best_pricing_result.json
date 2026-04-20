@@ -1,0 +1,8 @@
+{
+    "optimal_price": 51.6875,
+    "expected_demand": 24.69024171324406,
+    "expected_revenue": 1276.1768685533023,
+    "static_price": 38.25,
+    "static_revenue": 1067.9638491603084,
+    "uplift_percent": 19.496260997664134
+}
